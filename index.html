@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bar Bending Schedule</title>
+  <style>
+    body{font-family:Arial, sans-serif; margin:20px; background:#f9f9f9}
+    h1{text-align:center}
+    .meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+    .meta label{font-size:12px;color:#555}
+    .meta input{width:100%;padding:4px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{border:1px solid #ccc;padding:4px;text-align:center;font-size:13px}
+    th{background:#eee}
+    td[contenteditable="true"]{background:#fffbe6;cursor:text}
+    .deleteCol{display:table-cell}
+    @media print {
+      .controls,.deleteCol{display:none!important}
+      body{background:#fff}
+    }
+    .footer{text-align:center;margin-top:20px;font-size:12px;color:#666}
+  </style>
+</head>
+<body>
+  <h1>Reinforcement Schedule Calculator</h1>
+  <div style="text-align:right;font-size:12px;margin-bottom:8px" id="datetime"></div>
+
+  <!-- Project particulars -->
+  <div class="meta">
+    <div><label>Project Name</label><input id="projectName"></div>
+    <div><label>Project Location</label><input id="projectLocation"></div>
+    <div><label>Consultant/Engineer Name</label><input id="consultant"></div>
+    <div><label>Client Name</label><input id="client"></div>
+    <div><label>Contractor Name</label><input id="contractor"></div>
+    <div><label>Quantity Surveyor</label><input id="qs"></div>
+    <div><label>Date of Preparation</label><input id="prepDate" type="date"></div>
+    <div><label>Revision No/Date</label><input id="revision"></div>
+  </div>
+
+  <div class="controls" style="margin:10px 0">
+    <button onclick="addRow()">+ Add Row</button>
+    <button onclick="calculate()">Calculate</button>
+    <button onclick="window.print()">Print</button>
+  </div>
+
+  <table id="schedule">
+    <thead>
+      <tr>
+        <th>S/N</th>
+        <th>Description</th>
+        <th>Bar Mark</th>
+        <th>Diameter</th>
+        <th>Length (with Bends & Other Assumptions)</th>
+        <th>No of Members</th>
+        <th>Bars Per Member</th>
+        <th>Total Length</th>
+        <th>Weighting Constant</th>
+        <th>6</th><th>8</th><th>10</th><th>12</th><th>16</th><th>20</th><th>25</th><th>32</th><th>40</th>
+        <th>Remarks</th>
+        <th class="deleteCol">Delete</th>
+      </tr>
+    </thead>
+    <tbody id="scheduleBody"></tbody>
+    <tfoot>
+      <tr>
+        <td colspan="9">Total Quantity</td>
+        <td id="tot6"></td><td id="tot8"></td><td id="tot10"></td><td id="tot12"></td>
+        <td id="tot16"></td><td id="tot20"></td><td id="tot25"></td><td id="tot32"></td><td id="tot40"></td>
+        <td></td><td class="deleteCol"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <h3>Summary (Grouped by Description — Diameter)</h3>
+  <div id="summary"></div>
+
+  <div class="footer">© <span id="year"></span> The Quantity Surveying Chronicles</div>
+
+<script>
+const DIAMS=[6,8,10,12,16,20,25,32,40];
+let rows=[];
+function newRow(sn){return{sn:sn||rows.length+1,desc:'',barMark:'',diameter:'',length:'',noOf:'',barsPer:'',totalLength:'',weightConst:'',remarks:'',...Object.fromEntries(DIAMS.map(d=>['d'+d,'']))};}
+function renumber(){rows.forEach((r,i)=>r.sn=i+1);}
+function addRow(){rows.push(newRow());renderRows();}
+function toNum(v){let n=parseFloat(v);return isNaN(n)?0:n;}
+function calcRow(i){
+  let r=rows[i];let dia=toNum(r.diameter);
+  if(dia>0)r.weightConst=(dia*dia/162).toFixed(4);else r.weightConst='';
+  let L=toNum(r.length),N=toNum(r.noOf),B=toNum(r.barsPer);
+  let tot=L*N*B;
+  r.totalLength=tot?tot.toFixed(3):'';
+  DIAMS.forEach(d=>r['d'+d]='');
+  if(dia&&tot)r['d'+dia]=(tot*(dia*dia/162)).toFixed(3);
+  renderRows();updateSummary();
+}
+function renderRows(){
+  const body=document.getElementById('scheduleBody');body.innerHTML='';
+  rows.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    const addCell=(val,key,calc=false,cls='')=>{
+      const td=document.createElement('td');td.innerText=val||'';
+      if(!calc){
+        td.contentEditable='true';
+        if(['diameter','length','noOf','barsPer'].includes(key)){
+          td.onblur=()=>{r[key]=td.innerText.trim();calcRow(i);}
+        } else {
+          td.oninput=()=>{r[key]=td.innerText.trim();}
+        }
+      }
+      if(cls)td.classList.add(cls);
+      tr.appendChild(td);
+    };
+    addCell(r.sn,'sn',true);
+    addCell(r.desc,'desc',false,'desc');
+    addCell(r.barMark,'barMark',false);
+    addCell(r.diameter,'diameter',false);
+    addCell(r.length,'length',false);
+    addCell(r.noOf,'noOf',false);
+    addCell(r.barsPer,'barsPer',false);
+    addCell(r.totalLength,'totalLength',true);
+    addCell(r.weightConst,'weightConst',true);
+    DIAMS.forEach(d=>addCell(r['d'+d],'d'+d,true));
+    addCell(r.remarks,'remarks',false,'desc');
+    const td=document.createElement('td');td.classList.add('deleteCol');
+    const btn=document.createElement('button');btn.textContent='Delete';
+    btn.onclick=()=>{rows.splice(i,1);renumber();renderRows();updateSummary();};
+    td.appendChild(btn);tr.appendChild(td);
+    body.appendChild(tr);
+  });
+  updateTotals();
+}
+function updateTotals(){
+  let sums=Object.fromEntries(DIAMS.map(d=>[d,0]));
+  rows.forEach(r=>DIAMS.forEach(d=>sums[d]+=toNum(r['d'+d])));
+  DIAMS.forEach(d=>document.getElementById('tot'+d).innerText=sums[d]?sums[d].toFixed(3):'');
+}
+function updateSummary(){
+  let groups={};
+  rows.forEach(r=>{
+    let d=toNum(r.diameter);if(!d)return;
+    let key=(r.desc||'')+' — '+d+'mm';
+    groups[key]=(groups[key]||0)+toNum(r['d'+d]);
+  });
+  let html='<table><tr><th>Description & Diameter</th><th>Total (tonnes)</th></tr>';
+  for(let k in groups){html+='<tr><td>'+k+'</td><td>'+(groups[k]/1000).toFixed(3)+'</td></tr>';}
+  html+='</table>';
+  document.getElementById('summary').innerHTML=html;
+}
+function calculate(){rows.forEach((r,i)=>calcRow(i));}
+document.getElementById('year').textContent=new Date().getFullYear();
+setInterval(()=>{document.getElementById('datetime').textContent=new Date().toLocaleString();},1000);
+addRow();
+</script>
+</body>
+</html>
